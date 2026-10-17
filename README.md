@@ -1,240 +1,152 @@
-# VentureLens
+VentureLens
+Turn startup ideas into evidence-backed decisions.
 
-> **Turn startup ideas into evidence-backed decisions.**
+VentureLens is an open-source, evidence-backed startup feasibility and diligence platform. It combines competitor discovery, transparent scoring, and adversarial investor analysis to help founders test their assumptions before investing time and money.
 
-VentureLens is an open-source, evidence-backed startup feasibility and diligence platform. Unlike generic chatbots that merely generate polite advice, VentureLens combines real-world competitor discovery, transparent mathematical criteria scoring, and an adversarial investor red-team to stress-test weak assumptions before founders spend capital.
+1. Problem Statement
 
----
+Founders, student entrepreneurs, and hackathon teams often build products based on unvalidated assumptions and incomplete market research.
 
-## 1. Problem Statement
+VentureLens aims to help users:
 
-Founders, student entrepreneurs, and hackathon teams frequently build products based on unvalidated assumptions, opaque market advice, and confirmation bias. Generic AI chatbots exacerbate this problem by acting as agreeable cheerleaders—failing to challenge flawed unit economics, overlooking entrenched incumbents, or hallucinating market statistics.
+Discover competitors and alternatives.
+Separate sourced evidence from hypotheses.
+Challenge assumptions from an investor's perspective.
+Understand transparent feasibility scores.
+Design practical validation experiments before building.
+2. Proposed Solution
 
-Entrepreneurs need an objective diligence engine that:
-1. Conducts genuine competitor and market discovery.
-2. Distinguishes verified external citations from founder hypotheses.
-3. Challenges assumptions with an adversarial venture capitalist perspective.
-4. Produces transparent, explainable feasibility scores with documented weights.
-5. Prescribes concrete, inexpensive validation experiments to de-risk ideas before code is written.
+VentureLens is designed around a five-stage workflow:
 
----
+Startup idea submission and normalization.
+Market and competitor research.
+Deterministic scoring across feasibility dimensions.
+Adversarial investor review and failure analysis.
+Evidence review, validation experiments, and report generation.
 
-## 2. Proposed Solution
+Actual research and model capabilities depend on the configured providers. Mock-mode results are for demonstration and testing and must not be interpreted as live research.
 
-VentureLens implements an automated 5-stage diligence pipeline:
+3. Key Features
+Evidence-aware analysis: Distinguishes sourced findings from estimates and unverified hypotheses.
+Adversarial investor review: Identifies risks, weak assumptions, and potential failure scenarios.
+Transparent scoring: Uses explicit scoring criteria rather than presenting a model-generated score as a probability of success.
+Validation experiments: Suggests practical ways to test demand and reduce uncertainty.
+Report persistence: Supports saving and revisiting analyses, subject to the implemented application features.
+Configurable AI and search providers: Supports the providers implemented and enabled in the application.
+4. Architecture
 
-```
-[Startup Submission]
-        │
-        ▼
-[Stage 1: Parameter Normalization & Domain Extraction]
-        │
-        ▼
-[Stage 2: Live Web Evidence & Competitor Discovery (DuckDuckGo / Tavily)]
-        │
-        ▼
-[Stage 3: Deterministic Scoring across 5 Feasibility Dimensions]
-        │
-        ▼
-[Stage 4: Adversarial Investor Diligence (Harsh GP Red-Team & Pre-Mortem)]
-        │
-        ▼
-[Stage 5: Citation Reconciliation & Actionable Experiment Generation]
-        │
-        ▼
-[Saved Reports & Interactive Dashboard with Markdown/JSON Export]
-```
+The intended architecture includes:
 
----
+Frontend: React, Vite, and TypeScript.
+Backend: FastAPI and Pydantic.
+AI integration: A configurable model-provider adapter.
+Research: Configurable search integration.
+Scoring: Application-side feasibility scoring.
+Persistence: SQLite.
 
-## 3. Key Differentiators
+The precise implementation and supported providers should be verified against the source code.
 
-- **Anti-Hallucination Evidence Record:** Every competitor and market claim is cross-referenced with retrieved web sources. The system explicitly tags records as `VERIFIED_SOURCE`, `DERIVED_ESTIMATE`, or `UNVERIFIED_HYPOTHESIS`.
-- **Adversarial Red-Team Diligence:** A simulated General Partner red-teams the venture, identifying structural blindspots, CAC traps, incumbent retaliation threats, and an 18-month pre-mortem failure mode.
-- **Explainable Composite Index:** Feasibility scores (0-100) are computed deterministically:
-  $$\text{Score} = (0.20 \times \text{Problem}) + (0.25 \times \text{Market}) + (0.20 \times \text{Defensibility}) + (0.20 \times \text{Business}) + (0.15 \times \text{Technical}) - \text{Penalties}$$
-- **Zero-Key Hackathon Demo Mode:** Runs immediately out of the box with deterministic mock evaluation mode and free web search, or unlocks live Google Gemini 2.5 Flash / Gemma inference with an API key.
+5. Technology Stack
+Layer	Technology
+Frontend	React, Vite, TypeScript
+Styling	Tailwind CSS, if configured
+Backend	Python, FastAPI, Pydantic
+Database	SQLite, SQLAlchemy
+AI	Configured model provider or mock provider
+Research	Configured search provider
+Testing	pytest and available frontend tests
+6. Prerequisites
+Python 3.10 or later, compatible with the project dependencies.
+Node.js and npm, compatible with the frontend dependencies.
+Git.
+7. Installation
 
----
+Clone the repository:
 
-## 4. Architecture
+git clone https://github.com/EpikShiza/Venture-Lens.git
+cd Venture-Lens
 
-### System Architecture Diagram
 
-```mermaid
-flowchart TD
-    subgraph Frontend ["Frontend (React 18 + Vite + Tailwind)"]
-        UI[User Interface & Forms]
-        Gauge[Score Gauge & Dimensional Breakdown]
-        RedTeamUI[Adversarial Diligence Panel]
-        EvidenceUI[Verified Citations Table]
-        CompareUI[Side-by-Side Comparison Modal]
-    end
+Create a local environment file from the example:
 
-    subgraph Backend ["Backend (FastAPI + Pydantic v2)"]
-        Router["/api/analyses & /api/health"]
-        Orchestrator[Evaluation Orchestrator]
-        Scorer[Deterministic Scoring Engine]
-        ReportSvc[Report Service & Exporter]
-    end
+Windows PowerShell
 
-    subgraph AIAdapters ["Pluggable AI Adapters"]
-        Gemini[Google Gemini 2.5 Flash / Gemma]
-        Ollama[Local Ollama Gemma 2/4]
-        MockAI[Deterministic Mock Provider]
-    end
-
-    subgraph SearchAdapters ["Search Adapters"]
-        DDG[DuckDuckGo Live Search]
-        Tavily[Tavily Search API]
-        MockSearch[Curated Benchmark Citations]
-    end
-
-    subgraph Storage ["Persistence"]
-        SQLite[(Local SQLite: venturelens.db)]
-    end
-
-    UI --> Router
-    Router --> Orchestrator
-    Orchestrator --> SearchAdapters
-    Orchestrator --> AIAdapters
-    Orchestrator --> Scorer
-    Orchestrator --> ReportSvc
-    ReportSvc --> SQLite
-    Router --> UI
-```
-
----
-
-## 5. Technology Stack
-
-| Layer | Technology | Rationale |
-|---|---|---|
-| **Frontend** | React 18, Vite 8, TypeScript | Instant HMR, type safety, sub-second production builds |
-| **Styling** | Tailwind CSS v4, Lucide React | Modern dark-slate SaaS design system, responsive UI |
-| **Backend** | Python 3.12, FastAPI, Pydantic v2 | High performance, automatic OpenAPI documentation, schema validation |
-| **Database** | SQLite via SQLAlchemy 2.0 ORM | Zero-configuration, zero-cost persistent local storage |
-| **AI Inference** | Google Gemini 2.5 Flash / Gemma / Ollama / Mock | Pluggable provider adapter with graceful fallback |
-| **Market Search** | DuckDuckGo / Tavily / Mock Evidence | Free web search index without mandatory API keys |
-| **Testing** | pytest, pytest-asyncio, FastAPI TestClient | Deterministic automated unit and integration test suite |
-
----
-
-## 6. Prerequisites
-
-- **Python:** 3.10, 3.11, or 3.12 (`python --version`)
-- **Node.js:** v18.0 or higher (`node --version`)
-- **Git:** (`git --version`)
-
----
-
-## 7. Installation & Quick Start
-
-### Step 1: Clone the Repository
-```bash
-git clone https://github.com/your-username/venturelens.git
-cd venturelens
-```
-
-### Step 2: Configure Environment Variables
-```bash
-# Windows PowerShell:
 Copy-Item .env.example .env
 
-# macOS / Linux:
-cp .env.example .env
-```
 
-### Step 3: Setup Backend Virtual Environment
-```powershell
-# Windows PowerShell:
+Create and activate the Python virtual environment:
+
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
+
+
+Install backend dependencies:
+
 pip install -r backend\requirements.txt
 
-# macOS / Linux:
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r backend/requirements.txt
-```
 
-### Step 4: Install Frontend Dependencies
-```bash
+Install frontend dependencies:
+
 cd frontend
 npm install
 cd ..
-```
 
----
 
-## 8. Running the Application
+These commands assume the corresponding files and directories exist in the repository.
 
-### Terminal 1: Start Backend (FastAPI)
-```powershell
-# From project root:
-.\.venv\Scripts\Activate.ps1
+8. Running the Application
+
+Start the backend from the project root in one terminal:
+
 $env:PYTHONPATH = "backend"
 uvicorn app.main:app --reload --port 8000
-```
-- Backend API: `http://localhost:8000`
-- Interactive OpenAPI Docs: `http://localhost:8000/docs`
-- Health Endpoint: `http://localhost:8000/api/health`
 
-### Terminal 2: Start Frontend (Vite)
-```bash
+
+If the project's entry point differs, use the actual module path defined by the implementation.
+
+Start the frontend in a second terminal:
+
 cd frontend
 npm run dev
-```
-- Frontend Web UI: `http://localhost:5173`
 
----
 
-## 9. API Keys & AI Provider Configuration
+When the services start successfully, use the local frontend URL printed by Vite. If configured, the FastAPI API documentation is available at http://localhost:8000/docs.
 
-By default, VentureLens runs in **Deterministic Mock Mode** with live DuckDuckGo web search. It works 100% offline or without API keys for testing.
+9. AI and Research Configuration
 
-To enable live Google Gemini or Gemma inference:
+Configure provider settings in your local .env file.
 
-1. Visit [Google AI Studio](https://aistudio.google.com/app/apikey).
-2. Generate a free Gemini API key.
-3. Open your `.env` file and set:
-   ```env
-   AI_PROVIDER=gemini
-   GEMINI_API_KEY=your_actual_api_key_here
-   GEMINI_MODEL=gemini-2.5-flash
-   ```
-4. Restart the backend server. The UI status pill will switch from `Demo Mock Mode` to `Live AI: gemini-2.5-flash`.
+Mock mode may return deterministic demonstration responses rather than live model analysis.
+Real model inference requires a supported provider, a valid API key, and a compatible model identifier.
+Live research requires a functioning search integration.
+Do not treat generated hypotheses as verified facts.
+Never commit .env or expose API keys in frontend code.
 
----
+For Google AI configuration, consult the official Google AI Studio and Gemma documentation.
 
-## 10. Running Automated Tests
+10. Testing
 
-Run the complete backend test suite:
-```powershell
-# Windows PowerShell:
+Run the backend tests, if present:
+
 $env:PYTHONPATH = "backend"
 .\.venv\Scripts\pytest.exe backend\tests -v
 
-# macOS / Linux:
-PYTHONPATH=backend pytest backend/tests -v
-```
 
-Verify the frontend build:
-```bash
+Build the frontend:
+
 cd frontend
 npm run build
-```
 
----
 
-## 11. Security & Privacy
+Record actual test results rather than assuming that the application works because the commands are documented.
 
-- **Server-Side Secret Isolation:** API keys are never exposed in frontend code bundles or transmitted to clients.
-- **Untrusted Input Sanitization:** Retrieved web search HTML and startup submissions are treated as untrusted text. No shell execution or dynamic `eval` is permitted.
-- **Local Persistence:** Analyses are stored in a local SQLite file (`venturelens.db`) and are never sent to third-party model training pipelines.
+11. Security and Privacy
+Keep API keys in local environment variables.
+Exclude .env and other secrets from Git.
+Treat user submissions and retrieved web content as untrusted input.
+Validate model outputs before using them.
+Do not fabricate citations, market statistics, or customer research.
+Review database persistence and provider data-handling policies before deployment.
+12. License
 
----
-
-## 12. License
-
-This project is licensed under the **Apache License, Version 2.0**. See the [LICENSE](LICENSE) file for details.
+This project is intended to use the Apache License, Version 2.0. See LICENSE for the actual license text.
