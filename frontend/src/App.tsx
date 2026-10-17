@@ -49,7 +49,7 @@ export function App() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#0B0F19] text-slate-100 selection:bg-indigo-500/30 selection:text-indigo-200">
+    <div className="app-shell min-h-screen flex flex-col selection:bg-lime-300/30 selection:text-white">
       {/* Top Navbar */}
       <Navbar
         currentTab={currentTab}
