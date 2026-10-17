@@ -41,13 +41,22 @@ def health_check(db: Session = Depends(get_db)):
 def get_system_status(db: Session = Depends(get_db)):
     """Provides transparent runtime info on configured AI and search providers."""
     count = db.query(AnalysisReportModel).count()
+    
+    active_model = "deterministic-mock"
+    if settings.AI_PROVIDER == "gemini":
+        active_model = settings.GEMINI_MODEL
+    elif settings.AI_PROVIDER == "gemma":
+        active_model = settings.GEMMA_MODEL
+    elif settings.AI_PROVIDER == "ollama":
+        active_model = settings.OLLAMA_MODEL
+
     return SystemStatusResponse(
         status="operational",
         ai_provider=settings.AI_PROVIDER,
-        ai_model=settings.GEMINI_MODEL if settings.AI_PROVIDER == "gemini" else (settings.OLLAMA_MODEL if settings.AI_PROVIDER == "ollama" else "deterministic-mock"),
+        ai_model=active_model,
         search_provider=settings.SEARCH_PROVIDER,
-        gemini_key_configured=bool(settings.GEMINI_API_KEY and len(settings.GEMINI_API_KEY) > 5),
-        tavily_key_configured=bool(settings.TAVILY_API_KEY and len(settings.TAVILY_API_KEY) > 5),
+        gemini_key_configured=bool(settings.GEMINI_API_KEY and len(settings.GEMINI_API_KEY) > 8 and "replace_with_" not in settings.GEMINI_API_KEY),
+        tavily_key_configured=bool(settings.TAVILY_API_KEY and len(settings.TAVILY_API_KEY) > 8 and "replace_with_" not in settings.TAVILY_API_KEY),
         database_url_type="sqlite" if "sqlite" in settings.DATABASE_URL else "postgresql",
         total_saved_reports=count,
     )
@@ -73,8 +82,23 @@ async def create_analysis(
         report = await orchestrator.run_evaluation(startup_input)
         ReportService.save_report(db, report, startup_input)
         return report
+    except ValueError as ve:
+        db.rollback()
+        logger.warning(f"Configuration or input validation error during analysis: {ve}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(ve),
+        )
+    except RuntimeError as re:
+        db.rollback()
+        logger.error(f"External service runtime failure during analysis: {re}")
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=str(re),
+        )
     except Exception as ex:
-        logger.error(f"Error during evaluation execution: {ex}", exc_info=True)
+        db.rollback()
+        logger.error(f"Unexpected error during evaluation execution: {ex}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Startup evaluation failed: {str(ex)}",

@@ -11,6 +11,41 @@ from app.schemas.analysis import StartupInput, EvidenceItem
 logger = logging.getLogger(__name__)
 
 
+def extract_json_from_text(raw_text: str) -> Dict[str, Any]:
+    """
+    Robustly extracts and parses JSON from raw LLM output.
+    Handles raw JSON, markdown-fenced code blocks (```json ... ```),
+    and responses containing conversational preambles.
+    """
+    cleaned = raw_text.strip()
+
+    # 1. Direct JSON parse
+    try:
+        return json.loads(cleaned)
+    except Exception:
+        pass
+
+    # 2. Strip markdown fences: ```json ... ``` or ``` ... ```
+    fence_pattern = r"```(?:json)?\s*([\s\S]*?)\s*```"
+    fence_match = re.search(fence_pattern, cleaned)
+    if fence_match:
+        fenced_content = fence_match.group(1).strip()
+        try:
+            return json.loads(fenced_content)
+        except Exception:
+            pass
+
+    # 3. Find outermost curly braces { ... }
+    brace_match = re.search(r"\{[\s\S]*\}", cleaned)
+    if brace_match:
+        try:
+            return json.loads(brace_match.group(0))
+        except Exception as e:
+            raise ValueError(f"Found JSON object delimiters but parsing failed: {e}")
+
+    raise ValueError(f"Could not extract valid JSON from model response: {cleaned[:200]}")
+
+
 SYSTEM_EVALUATION_PROMPT = """
 You are VentureLens AI, an elite startup diligence partner, venture capitalist, and red-team advisor.
 Your mission: evaluate the feasibility of the proposed startup idea using rigorous first-principles analysis.
@@ -133,11 +168,19 @@ class BaseAIProvider(ABC):
 
 class GeminiProvider(BaseAIProvider):
     """
-    Adapter for Google Gemini / Gemma API with JSON schema enforcement.
+    Adapter for Google Gemini / Gemma API on Google AI Studio.
+    Strictly reports API or authentication errors without silent fallback.
     """
-    def __init__(self, api_key: str, model_name: str = "gemini-2.5-flash"):
-        self.api_key = api_key
+    def __init__(self, api_key: Optional[str] = None, model_name: str = "gemini-2.5-flash"):
+        self.api_key = api_key or settings.GEMINI_API_KEY
         self.model_name = model_name
+
+        if not self.api_key or "replace_with_" in self.api_key or len(self.api_key) < 8:
+            raise ValueError(
+                "GEMINI_API_KEY is not configured or contains placeholder text in .env. "
+                "Please acquire a free API key at https://aistudio.google.com/app/apikey "
+                "or set AI_PROVIDER=mock in .env for local testing."
+            )
 
     async def generate_evaluation(
         self,
@@ -187,28 +230,47 @@ Perform the 5-stage evaluation and return ONLY valid JSON matching the specified
         async with httpx.AsyncClient(timeout=settings.AI_TIMEOUT_SECONDS) as client:
             try:
                 response = await client.post(url, json=payload, headers=headers)
-                if response.status_code == 200:
-                    data = response.json()
-                    candidates = data.get("candidates", [])
-                    if candidates:
-                        text_out = candidates[0].get("content", {}).get("parts", [{}])[0].get("text", "")
-                        return json.loads(text_out)
-                else:
-                    logger.warning(f"Gemini API returned error {response.status_code}: {response.text}")
-            except Exception as ex:
-                logger.error(f"Gemini request failed: {ex}")
+            except httpx.TimeoutException as te:
+                raise RuntimeError(f"Google AI API request timed out after {settings.AI_TIMEOUT_SECONDS}s: {te}")
+            except Exception as net_ex:
+                raise RuntimeError(f"Failed to connect to Google AI endpoint: {net_ex}")
 
-        # Fallback to Mock provider if API fails or quota exceeded
-        logger.info("Falling back to deterministic mock provider due to API unavailability.")
-        mock = MockAIProvider()
-        return await mock.generate_evaluation(startup, evidence)
+            if response.status_code != 200:
+                err_detail = response.text
+                try:
+                    err_json = response.json()
+                    err_detail = err_json.get("error", {}).get("message", response.text)
+                except Exception:
+                    pass
+                raise RuntimeError(f"Google AI API ({self.model_name}) error {response.status_code}: {err_detail}")
+
+            data = response.json()
+            candidates = data.get("candidates", [])
+            if not candidates:
+                raise RuntimeError(f"Google AI returned zero completion candidates. Feedback: {data.get('promptFeedback', {})}")
+
+            text_out = candidates[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+            if not text_out:
+                raise RuntimeError("Google AI returned an empty response part.")
+
+            return extract_json_from_text(text_out)
+
+
+class GemmaProvider(GeminiProvider):
+    """
+    Dedicated Gemma 4 adapter using hosted Gemma models via the Gemini API (Google AI Studio).
+    Compatible model identifiers: 'gemma-4-26b-a4b-it', 'gemma-4-31b-it'.
+    """
+    def __init__(self, api_key: Optional[str] = None, model_name: Optional[str] = None):
+        target_model = model_name or settings.GEMMA_MODEL
+        super().__init__(api_key=api_key, model_name=target_model)
 
 
 class OllamaProvider(BaseAIProvider):
     """
-    Adapter for local Ollama running Gemma 2 / Gemma 4 / Llama 3 models.
+    Adapter for local Ollama running Gemma 4 (e.g. gemma4:e4b, gemma4:26b).
     """
-    def __init__(self, base_url: str = "http://localhost:11434", model_name: str = "gemma2:9b"):
+    def __init__(self, base_url: str = "http://localhost:11434", model_name: str = "gemma4:e4b"):
         self.base_url = base_url
         self.model_name = model_name
 
@@ -231,14 +293,16 @@ class OllamaProvider(BaseAIProvider):
                         "stream": False,
                     }
                 )
-                if res.status_code == 200:
-                    body = res.json()
-                    return json.loads(body.get("response", "{}"))
-        except Exception as ex:
-            logger.warning(f"Ollama local model failed: {ex}")
-
-        mock = MockAIProvider()
-        return await mock.generate_evaluation(startup, evidence)
+                if res.status_code != 200:
+                    raise RuntimeError(f"Ollama returned HTTP {res.status_code}: {res.text}")
+                body = res.json()
+                raw_resp = body.get("response", "{}")
+                return extract_json_from_text(raw_resp)
+        except httpx.ConnectError:
+            raise RuntimeError(
+                f"Cannot connect to local Ollama server at {self.base_url}. "
+                "Ensure Ollama is running (`ollama serve`) and model is pulled (`ollama pull {self.model_name}`)."
+            )
 
 
 class MockAIProvider(BaseAIProvider):
@@ -260,7 +324,7 @@ class MockAIProvider(BaseAIProvider):
         prob_score = 82.0 if len(startup.problem_statement) > 80 else 68.0
         mkt_score = 78.0 if "b2b" in startup.business_model.lower() or "saas" in startup.business_model.lower() else 70.0
         tech_score = 85.0 if budget >= 10000 else 65.0
-        moat_score = 64.0  # Early startups typically have thin defensibility
+        moat_score = 64.0
         biz_score = 75.0 if startup.pricing_hypothesis else 62.0
 
         penalties = []
@@ -447,12 +511,15 @@ class MockAIProvider(BaseAIProvider):
 def get_ai_provider() -> BaseAIProvider:
     provider = settings.AI_PROVIDER.lower().strip()
     if provider == "gemini":
-        if settings.GEMINI_API_KEY:
-            return GeminiProvider(api_key=settings.GEMINI_API_KEY, model_name=settings.GEMINI_MODEL)
-        else:
-            logger.warning("GEMINI_API_KEY not configured. Falling back to MockAIProvider.")
-            return MockAIProvider()
+        return GeminiProvider(api_key=settings.GEMINI_API_KEY, model_name=settings.GEMINI_MODEL)
+    elif provider == "gemma":
+        return GemmaProvider(api_key=settings.GEMINI_API_KEY, model_name=settings.GEMMA_MODEL)
     elif provider == "ollama":
         return OllamaProvider(base_url=settings.OLLAMA_BASE_URL, model_name=settings.OLLAMA_MODEL)
-    else:
+    elif provider == "mock":
         return MockAIProvider()
+    else:
+        raise ValueError(
+            f"Unsupported AI_PROVIDER '{settings.AI_PROVIDER}'. "
+            "Supported values in .env: 'mock', 'gemini', 'gemma', 'ollama'."
+        )

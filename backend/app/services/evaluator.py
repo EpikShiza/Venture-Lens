@@ -52,22 +52,15 @@ class EvaluationOrchestrator:
         try:
             evidence_items = await self.search_provider.search(search_query, max_results=4)
         except Exception as ex:
-            logger.warning(f"Search provider failed, falling back to empty evidence: {ex}")
+            logger.warning(f"Search provider failed ({ex}), falling back to empty evidence.")
             evidence_items = []
 
         # STAGE 3 & 4: AI Diligence & Adversarial Critique
         is_mock_mode = isinstance(self.ai_provider, MockAIProvider) or settings.AI_PROVIDER == "mock"
         provider_name = "mock" if is_mock_mode else settings.AI_PROVIDER
 
-        raw_evaluation = {}
-        try:
-            raw_evaluation = await self.ai_provider.generate_evaluation(startup, evidence_items)
-        except Exception as ex:
-            logger.error(f"Primary AI evaluation failed ({ex}). Invoking deterministic mock fallback.")
-            fallback = MockAIProvider()
-            raw_evaluation = await fallback.generate_evaluation(startup, evidence_items)
-            is_mock_mode = True
-            provider_name = "mock_fallback"
+        # Execute evaluation via configured AI provider (no silent fallback to mock on real provider error)
+        raw_evaluation = await self.ai_provider.generate_evaluation(startup, evidence_items)
 
         # STAGE 5: Scoring Calculation & Reconciliation
         raw_scores = raw_evaluation.get("raw_scores", {

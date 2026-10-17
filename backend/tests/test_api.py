@@ -1,4 +1,5 @@
 import pytest
+from app.services.ai_provider import GeminiProvider, extract_json_from_text
 
 
 def test_root_endpoint(client):
@@ -105,3 +106,58 @@ def test_seed_demo_data(client):
     assert list_res.status_code == 200
     items = list_res.json()
     assert len(items) >= 2
+
+
+def test_create_analysis_validation_error(client):
+    """Submitting missing or invalid fields must return HTTP 422 with structured field details."""
+    invalid_payload = {
+        "startup_name": "X",  # Too short (min 2)
+        "problem_statement": "Too short",  # Too short (min 20)
+    }
+    res = client.post("/api/analyses", json=invalid_payload)
+    assert res.status_code == 422
+    data = res.json()
+    assert "detail" in data
+    assert isinstance(data["detail"], list)
+    errors = {d["loc"][-1]: d["type"] for d in data["detail"]}
+    assert "problem_statement" in errors
+    assert "solution_description" in errors
+    assert "target_customer" in errors
+
+
+def test_cors_preflight_any_dev_port(client):
+    """Ensures CORS headers are properly returned for any localhost dev port without wildcard conflicts."""
+    headers = {
+        "Origin": "http://localhost:5174",
+        "Access-Control-Request-Method": "POST",
+    }
+    res = client.options("/api/analyses", headers=headers)
+    assert res.status_code == 200
+    assert res.headers.get("access-control-allow-origin") == "http://localhost:5174"
+    assert res.headers.get("access-control-allow-credentials") == "true"
+
+
+def test_gemini_provider_rejects_missing_key_without_silent_mock_fallback():
+    """Selecting a real provider with missing or placeholder keys must raise ValueError, not silently fake output."""
+    with pytest.raises(ValueError) as excinfo:
+        GeminiProvider(api_key="")
+    assert "GEMINI_API_KEY is not configured" in str(excinfo.value)
+
+    with pytest.raises(ValueError) as excinfo:
+        GeminiProvider(api_key="replace_with_your_actual_key")
+    assert "GEMINI_API_KEY is not configured" in str(excinfo.value)
+
+
+def test_extract_json_from_text():
+    """Verifies that markdown fences, surrounding prose, and raw JSON are cleanly parsed."""
+    # 1. Clean JSON
+    raw = '{"score": 85, "reason": "strong"}'
+    assert extract_json_from_text(raw) == {"score": 85, "reason": "strong"}
+
+    # 2. Markdown fenced JSON
+    fenced = '```json\n{"score": 90, "reason": "excellent"}\n```'
+    assert extract_json_from_text(fenced) == {"score": 90, "reason": "excellent"}
+
+    # 3. Leading text and trailing explanation
+    wrapped = 'Here is the evaluation result:\n```json\n{"score": 75}\n```\nHope this helps.'
+    assert extract_json_from_text(wrapped) == {"score": 75}

@@ -67,10 +67,11 @@ app = FastAPI(
     redoc_url="/redoc",
 )
 
-# Configure CORS for local development and production deployments
+# Configure CORS for local development (supports any localhost port without wildcard conflicts)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS + ["*"],  # Permits local dev and preview environments
+    allow_origins=settings.CORS_ORIGINS,
+    allow_origin_regex=r"http://(localhost|127\.0\.0\.1)(:\d+)?",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -82,7 +83,7 @@ async def global_exception_handler(request: Request, exc: Exception):
     logger.error(f"Unhandled exception on {request.method} {request.url.path}: {exc}", exc_info=True)
     return JSONResponse(
         status_code=500,
-        content={"detail": "An internal server error occurred. Please check logs."},
+        content={"detail": f"An unexpected server error occurred: {str(exc)}"},
     )
 
 

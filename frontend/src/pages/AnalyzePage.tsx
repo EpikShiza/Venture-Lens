@@ -85,6 +85,8 @@ export const AnalyzePage: React.FC<AnalyzePageProps> = ({ onAnalysisSuccess }) =
   const [currentStageIdx, setCurrentStageIdx] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
+  const isSubmittingRef = React.useRef(false);
+
   const handlePreFill = (key: string) => {
     const sample = PREFILL_SAMPLES[key];
     if (sample) {
@@ -96,11 +98,12 @@ export const AnalyzePage: React.FC<AnalyzePageProps> = ({ onAnalysisSuccess }) =
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmittingRef.current || loading) return;
     setError(null);
 
-    // Client-side validation
-    if (!formData.startup_name.trim()) {
-      setError('Startup Name is required.');
+    // Comprehensive client-side validation matching backend schemas
+    if (!formData.startup_name.trim() || formData.startup_name.trim().length < 2) {
+      setError('Startup Name must be at least 2 characters.');
       return;
     }
     if (formData.problem_statement.trim().length < 20) {
@@ -111,12 +114,20 @@ export const AnalyzePage: React.FC<AnalyzePageProps> = ({ onAnalysisSuccess }) =
       setError('Solution Description must be at least 20 characters.');
       return;
     }
-    if (!formData.target_customer.trim()) {
-      setError('Target Customer ICP is required.');
+    if (!formData.target_customer.trim() || formData.target_customer.trim().length < 5) {
+      setError('Target Customer Profile must be at least 5 characters (e.g. "Hospital IT Directors").');
       return;
     }
-    if (!formData.industry.trim()) {
-      setError('Industry / Sector is required.');
+    if (!formData.geographic_market.trim() || formData.geographic_market.trim().length < 2) {
+      setError('Geographic Market must be at least 2 characters (e.g. "North America" or "Global").');
+      return;
+    }
+    if (!formData.industry.trim() || formData.industry.trim().length < 2) {
+      setError('Industry / Sector must be at least 2 characters.');
+      return;
+    }
+    if (!formData.business_model.trim() || formData.business_model.trim().length < 3) {
+      setError('Business Model must be at least 3 characters (e.g. "B2B SaaS subscription").');
       return;
     }
 
@@ -128,10 +139,11 @@ export const AnalyzePage: React.FC<AnalyzePageProps> = ({ onAnalysisSuccess }) =
         .filter(Boolean),
     };
 
+    isSubmittingRef.current = true;
     setLoading(true);
     setCurrentStageIdx(0);
 
-    // Stage ticker for truthful user feedback
+    // Truthful stage ticker for user feedback
     const interval = setInterval(() => {
       setCurrentStageIdx((prev) => (prev < ANALYSIS_STAGES.length - 1 ? prev + 1 : prev));
     }, 2800);
@@ -144,7 +156,9 @@ export const AnalyzePage: React.FC<AnalyzePageProps> = ({ onAnalysisSuccess }) =
       clearInterval(interval);
       setError(err.message || 'An error occurred during startup evaluation.');
     } finally {
+      clearInterval(interval);
       setLoading(false);
+      isSubmittingRef.current = false;
     }
   };
 
